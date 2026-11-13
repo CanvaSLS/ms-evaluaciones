@@ -1,0 +1,77 @@
+# ms-evaluaciones · tareas, entregas, notas · productor de EntregaRegistrada y NotaPublicada
+service: ms-evaluaciones
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: us-east-1
+  memorySize: 256
+  timeout: 15
+  logRetentionInDays: 14
+  iam:
+    role: arn:aws:iam::${aws:accountId}:role/LabRole
+  environment:
+    SERVICE_NAME: ms-evaluaciones
+    DB_HOST: ${cf:sp-infra-${sls:stage}.DbEndpoint}   # RDS MySQL creada en infra-base
+    DB_PORT: '3306'
+    DB_USER: admin
+    DB_PASSWORD: ${env:DB_PASSWORD}                    # export DB_PASSWORD=... antes de desplegar (no se sube al repo)
+    TOPIC_ARN: arn:aws:sns:${aws:region}:${aws:accountId}:sp-eventos-${sls:stage}
+
+custom:
+  auth:
+    arn: arn:aws:lambda:${aws:region}:${aws:accountId}:function:ms-auth-${sls:stage}-autorizar
+    type: token
+    identitySource: method.request.header.Authorization
+    resultTtlInSeconds: 0
+
+package:
+  patterns:
+    - '!**'
+    - '*.py'
+    - 'vendor/**'      # pymysql: pip install -r requirements.txt -t vendor
+
+functions:
+  listarTareas:
+    handler: handler.listar_tareas
+    events:
+      - http: { path: 'evaluaciones/cursos/{curso_id}/tareas', method: get, cors: true, authorizer: "${self:custom.auth}" }
+  crearTarea:
+    handler: handler.crear_tarea
+    events:
+      - http: { path: 'evaluaciones/cursos/{curso_id}/tareas', method: post, cors: true, authorizer: "${self:custom.auth}" }
+  registrarEntrega:
+    handler: handler.registrar_entrega
+    events:
+      - http: { path: 'evaluaciones/cursos/{curso_id}/tareas/{tarea_id}/entregas', method: post, cors: true, authorizer: "${self:custom.auth}" }
+  listarEntregas:
+    handler: handler.listar_entregas
+    events:
+      - http: { path: 'evaluaciones/cursos/{curso_id}/tareas/{tarea_id}/entregas', method: get, cors: true, authorizer: "${self:custom.auth}" }
+  calificarEntrega:
+    handler: handler.calificar_entrega
+    events:
+      - http: { path: 'evaluaciones/cursos/{curso_id}/tareas/{tarea_id}/entregas/{alumno_id}/calificacion', method: put, cors: true, authorizer: "${self:custom.auth}" }
+  misNotas:
+    handler: handler.mis_notas
+    events:
+      - http: { path: evaluaciones/mis-notas, method: get, cors: true, authorizer: "${self:custom.auth}" }
+
+resources:
+  Resources:
+    GatewayResponse4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseType: DEFAULT_4XX
+        RestApiId: { Ref: ApiGatewayRestApi }
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+    GatewayResponse5XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseType: DEFAULT_5XX
+        RestApiId: { Ref: ApiGatewayRestApi }
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"

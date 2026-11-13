@@ -1,0 +1,13 @@
+.serverless/
+node_modules/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.aws/
+credentials
+*.zip
+salida/
+.DS_Store
+vendor/
